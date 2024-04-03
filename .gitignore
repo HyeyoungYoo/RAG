@@ -3,3 +3,4 @@ env/
 files/
 .cache/
 .cache2/
+.streamlit/

@@ -2,5 +2,6 @@
     "notebook.output.wordWrap": true,
     "editor.wordWrap": "on",
     "chat.editor.wordWrap": "on",
-    "diffEditor.wordWrap": "on"
+    "diffEditor.wordWrap": "on",
+    "python.missingPackage.severity": "Hint"
 }

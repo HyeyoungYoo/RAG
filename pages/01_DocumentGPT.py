@@ -1,56 +1,61 @@
+from langchain.chat_models import ChatOpenAI
+from langchain.document_loaders import UnstructuredFileLoader 
+from langchain.text_splitter import CharacterTextSplitter
+from langchain.embeddings import OpenAIEmbeddings, CacheBackedEmbeddings
+from langchain.vectorstores import FAISS
+from langchain.storage import LocalFileStore
+from langchain.prompts import ChatPromptTemplate
+from langchain.schema.runnable import RunnablePassthrough, RunnableLambda
+from langchain.memory import ConversationBufferMemory
+from langchain.prompts import MessagesPlaceholder
 import streamlit as st
 import time
 
 st.set_page_config(
     page_title="DocumentGPT",
-    page_icon="🥪"
+    page_icon="😎",
 )
 
-st.title("Document GPT")
-# streamlit의 Session State : 코드가 반복 실행되어도 지워지지 않는 저장공간
-if "messages" not in st.session_state: #st.session_staterk가
-                                       #messages라는 key를 가지고 있지않다면
-    st.session_state["messages"]=[]    #그때 빈 list로 initialize
-                                       #key 가 있으면 아무것도 하지마(messages를 유지하게)
-#st.write(st.session_state["messages"])
+def embed_file(file):
+    st.write(file)
+    #업로드된 파일을 로컬의 캐시 폴더에 저장하여 loader로 부를 수 있도록 한다.
+    file_content = file.read()
+    file_path = f"./.cache/files/{file.name}"
 
-def send_message(message,role,save=True):
-    with st.chat_message(role):
-        st.write(message)
-    if save:
-        st.session_state["messages"].append({"message":message,"role":role})
+    with open(file_path,"wb") as f:  #writable, binary로 파일 열기
+        f.write(file_content) # 해당 파일에 내용 쓰기
 
-for message in st.session_state["messages"]:
-    send_message(
-        message["message"],
-        message["role"],
-        save=False,
+    cache_dir = LocalFileStore(f"./.cache/embeddings/{file.name}")
+    splitter = CharacterTextSplitter().from_tiktoken_encoder(
+        separator="\n",
+        chunk_size=600,  
+        chunk_overlap=100,
     )
+    loader = UnstructuredFileLoader(file_path)
+    docs = loader.load_and_split(text_splitter=splitter)
+    embeddings = OpenAIEmbeddings()
+    cached_embeddings = CacheBackedEmbeddings.from_bytes_store(embeddings, cache_dir)
+    vectorstore = FAISS.from_documents(docs,cached_embeddings) 
+    retriever = vectorstore.as_retriever()
+    return retriever
 
-message = st.chat_input("Send a message to the ai")
+st.title("DocumentGPT")
+#사용자에게 파일 업로드 요청
 
-if message:
-    send_message(message,"human")
-    time.sleep(2)
-    send_message(f"You said: {message}","ai")
+st.markdown("""
+Welcome!
+            
+Use this chatbot to ask question to an AI about your files!
+"""
+)
 
-    with st.sidebar:
-        st.write(st.session_state)
+file = st.file_uploader("Upload a .txt .pdf or .docx file", type=["txt","pdf","docx",]
+)
 
-# with st.chat_message("human"):
-#     st.write("Helloooooooooooooo")
-
-# with st.chat_message("ai"):
-#     st.write("how are you")
-
-# with st.status("Embedding file...",expanded=True) as status:
-#     time.sleep(2)
-#     st.write("Getting the file")
-#     time.sleep(2)
-#     st.write("Embedding the file")
-#     time.sleep(2)
-#     st.write("Caching the file")
-#     status.update(label="Error",state="error")
+if file:
+   retriever = embed_file(file)
+   s= retriever.invoke("winston")
+   st.write(s)
 
 
 
