@@ -1,8 +1,12 @@
+from email import message
 from langchain.document_loaders import UnstructuredFileLoader 
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.embeddings import OpenAIEmbeddings, CacheBackedEmbeddings
 from langchain.vectorstores import FAISS
 from langchain.storage import LocalFileStore
+from langchain.prompts import ChatPromptTemplate
+from langchain.schema.runnable import RunnableLambda, RunnablePassthrough
+from langchain.chat_models import ChatOpenAI
 import streamlit as st
 import time
 
@@ -11,8 +15,15 @@ st.set_page_config(
     page_icon="😎",
 )
 
+llm = ChatOpenAI(
+    temperature=0.1
+)
+
+if "messages" not in st.session_state:
+    st.session_state["messages"] = []
+
+@st.cache_data  #streamlit의 cache_data함수는 업로드된 파일이 동일하면 이 함수를 재실행하지 않고 기존의 값을 다시반환
 def embed_file(file):
-    st.write(file)
     #업로드된 파일을 로컬의 캐시 폴더에 저장하여 loader로 부를 수 있도록 한다.
     file_content = file.read()
     file_path = f"./.cache/files/{file.name}"
@@ -20,19 +31,46 @@ def embed_file(file):
     with open(file_path,"wb") as f:  #writable, binary로 파일 열기
         f.write(file_content) # 해당 파일에 내용 쓰기
 
-    cache_dir = LocalFileStore(f"./.cache/embeddings/{file.name}")
-    splitter = CharacterTextSplitter().from_tiktoken_encoder(
+    cache_dir = LocalFileStore(f"./.cache/embeddings/{file.name}") #업로드 파일이름으로 캐시디렉토리 만들어
+    splitter = CharacterTextSplitter().from_tiktoken_encoder( #spliter 생성
         separator="\n",
         chunk_size=600,  
         chunk_overlap=100,
     )
-    loader = UnstructuredFileLoader(file_path)
-    docs = loader.load_and_split(text_splitter=splitter)
-    embeddings = OpenAIEmbeddings()
-    cached_embeddings = CacheBackedEmbeddings.from_bytes_store(embeddings, cache_dir)
-    vectorstore = FAISS.from_documents(docs,cached_embeddings) 
-    retriever = vectorstore.as_retriever()
+    loader = UnstructuredFileLoader(file_path) #업로드된 파일을 loader로 가져와
+    docs = loader.load_and_split(text_splitter=splitter) #loader에 올려진 파일을 splitter로 쪼개 []
+    embeddings = OpenAIEmbeddings() #임베딩스 생성
+    cached_embeddings = CacheBackedEmbeddings.from_bytes_store(embeddings, cache_dir) # 주어진 바이트 저장소(embeddings)에서 임베딩 데이터를 로드하여, 이를 지정된 캐시 디렉터리(cache_dir)에 캐싱하는 과정
+    vectorstore = FAISS.from_documents(docs,cached_embeddings) #FAISS 라이브러리를 사용하여 문서(docs) 컬렉션으로부터 벡터 저장소(vectorstore)를 생성하는 과정을 설정. docs는 벡터화하려는 문서들의 컬렉션이며, cached_embeddings는 문서들을 벡터화할 때 사용할 임베딩 데이터. 함수의 결과는 벡터의 저장소 vectorstore라는 변수에 저장
+    retriever = vectorstore.as_retriever() #사용자가 요청하는 쿼리에 대해 가장 관련성 높은 문서나 데이터 포인트를 vectorstore에서 검색해 반환
     return retriever
+
+def send_message(message, role, save=True):
+    with st.chat_message(role):
+        st.markdown(message)
+    if save:
+        st.session_state["messages"].append({"message":message, "role":role})
+
+#히스토리를 그려보는 함수
+def paint_history():
+    for message in st.session_state["messages"]:
+        send_message(message["message"], message["role"], save=False,)
+
+def format_docs(docs):
+    return "\n\n".join(document.page_content for document in docs)
+
+prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system",
+         """
+         Answer the question using ONLY the following context. If you don't know the answer just say you don't know, don't make anything up.
+
+         Context: {context}
+        """,
+        ),
+        ("human","{question}"),          
+    ]  
+)
 
 st.title("DocumentGPT")
 
@@ -40,16 +78,35 @@ st.markdown("""
 Welcome!
             
 Use this chatbot to ask question to an AI about your files!
+            
+Upload your files on the sidebar!
 """
 )
-#사용자에게 파일 업로드 요청
-file = st.file_uploader("Upload a .txt .pdf or .docx file", type=["txt","pdf","docx",]
-)
+#사용자에게 파일 업로드 요청 at sidebar
+with st.sidebar:
+    file = st.file_uploader(
+        "Upload a .txt .pdf or .docx file",
+        type=["txt","pdf","docx",]
+    )
 
 if file:
    retriever = embed_file(file)
-   s= retriever.invoke("winston")
-   st.write(s)
+
+   send_message("I'm ready! Ask away!","ai", save=False)
+   paint_history()
+   message = st.chat_input("Ask anything about your file...")
+   if message:
+        send_message(message,"human")
+        chain = {                       
+            "context":retriever | RunnableLambda(format_docs), 
+            "question":RunnablePassthrough()
+        } | prompt | llm
+        #docs = retriever.invoke(message) #LangChain은 chain의 input을 이용해 retriever를 자동으로 invoke하므로 필요X
+        response = chain.invoke(message)
+        send_message(response.content,"ai")
+
+else: 
+    st.session_state["messages"] = [] #업로드 파일이 바뀌거나 파일을 삭제하면 저장했던 대화 세션 초기화
 
 
 
