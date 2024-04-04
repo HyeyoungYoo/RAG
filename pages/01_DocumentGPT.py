@@ -1,5 +1,7 @@
 from email import message
+from uuid import UUID
 from langchain.document_loaders import UnstructuredFileLoader 
+from langchain.schema.output import ChatGenerationChunk, GenerationChunk
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.embeddings import OpenAIEmbeddings, CacheBackedEmbeddings
 from langchain.vectorstores import FAISS
@@ -7,6 +9,7 @@ from langchain.storage import LocalFileStore
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema.runnable import RunnableLambda, RunnablePassthrough
 from langchain.chat_models import ChatOpenAI
+from langchain.callbacks.base import BaseCallbackHandler
 import streamlit as st
 import time
 
@@ -15,14 +18,33 @@ st.set_page_config(
     page_icon="😎",
 )
 
+class ChatCallbackHandler(BaseCallbackHandler): #callback handeler는 각종 event들을 listen하는 function들을 갖는다.
+
+    message = ""
+
+    def on_llm_start(self, *args,**kwargs): #*args와 **kwarg로 수많은 argument(1,2,3,...) 및 keyword argument(a=1,b=2,c=3...)를 받을 수 있음
+        self.message_box = st.empty()  #빈 위젯 제공
+
+    def on_llm_end(self, *args,**kwargs):
+        save_message(self.message,"ai")
+
+    def on_llm_new_token(self, token, *args, **kwargs):
+        self.message += token
+        self.message_box.markdown(self.message)
+
 llm = ChatOpenAI(
-    temperature=0.1
+    temperature=0.1,
+    streaming=True,  #callback handler로 LLM의 답변 과정이 화면에 보일 수 일도록 함.
+                    #ChatOpenAI는 가능.일부 오래된 모델은 이 기능을 지원X 
+    callbacks=[
+        ChatCallbackHandler(),
+    ]
 )
 
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
 
-@st.cache_data  #streamlit의 cache_data함수는 업로드된 파일이 동일하면 이 함수를 재실행하지 않고 기존의 값을 다시반환
+@st.cache_data(show_spinner="Embedding file...") #streamlit의 cache_data함수는 업로드된 파일이 동일하면 이 함수를 재실행하지 않고 기존의 값을 다시반환
 def embed_file(file):
     #업로드된 파일을 로컬의 캐시 폴더에 저장하여 loader로 부를 수 있도록 한다.
     file_content = file.read()
@@ -45,11 +67,14 @@ def embed_file(file):
     retriever = vectorstore.as_retriever() #사용자가 요청하는 쿼리에 대해 가장 관련성 높은 문서나 데이터 포인트를 vectorstore에서 검색해 반환
     return retriever
 
+def save_message(message, role):
+    st.session_state["messages"].append({"message":message, "role":role})
+
 def send_message(message, role, save=True):
     with st.chat_message(role):
         st.markdown(message)
     if save:
-        st.session_state["messages"].append({"message":message, "role":role})
+       save_message(message, role)
 
 #히스토리를 그려보는 함수
 def paint_history():
@@ -102,8 +127,9 @@ if file:
             "question":RunnablePassthrough()
         } | prompt | llm
         #docs = retriever.invoke(message) #LangChain은 chain의 input을 이용해 retriever를 자동으로 invoke하므로 필요X
-        response = chain.invoke(message)
-        send_message(response.content,"ai")
+        with st.chat_message("ai"):
+            chain.invoke(message)
+
 
 else: 
     st.session_state["messages"] = [] #업로드 파일이 바뀌거나 파일을 삭제하면 저장했던 대화 세션 초기화

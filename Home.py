@@ -15,7 +15,7 @@ Welcome to my FullstackGPT Portfollio!
 
 Here are the apps I made:
 
-- [ ] [DocumentGPT](/DocumentGPT)
+- [X] [DocumentGPT](/DocumentGPT)
 - [ ] [PrivateGPT](/PrivateGPT)
 - [ ] [QuizeGPT](/QuizeGPT)
 - [ ] [SiteGPT](/SiteGPT)
