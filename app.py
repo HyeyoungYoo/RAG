@@ -17,6 +17,8 @@ st.set_page_config(
     page_icon="😎",
 )
 
+api_key = ""
+
 class ChatCallbackHandler(BaseCallbackHandler):
 
     message = ""
@@ -36,7 +38,8 @@ llm = ChatOpenAI(
     streaming=True,  
     callbacks=[
         ChatCallbackHandler(),
-    ]
+    ],
+    api_key=api_key
 )
 
 if "messages" not in st.session_state:
@@ -105,16 +108,18 @@ Upload your files on the sidebar!
 )
 
 with st.sidebar:
-    file = st.file_uploader(
-        "Upload a .txt .pdf or .docx file",
-        type=["txt","pdf","docx",]
-    )
     api_key = st.text_input("Insert your API-KEY")
     if api_key:
        st.write("API-Key is entered")
        print(api_key)
+    
+    file = st.file_uploader(
+        "Upload a .txt .pdf or .docx file",
+        type=["txt","pdf","docx",]
+    )
 
-if file:
+
+if file and api_key:
    retriever = embed_file(file)
 
    send_message("I'm ready! Ask away!","ai", save=False)
