@@ -1,13 +1,8 @@
-from langchain.chat_models import ChatOpenAI
 from langchain.document_loaders import UnstructuredFileLoader 
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.embeddings import OpenAIEmbeddings, CacheBackedEmbeddings
 from langchain.vectorstores import FAISS
 from langchain.storage import LocalFileStore
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema.runnable import RunnablePassthrough, RunnableLambda
-from langchain.memory import ConversationBufferMemory
-from langchain.prompts import MessagesPlaceholder
 import streamlit as st
 import time
 
@@ -40,7 +35,6 @@ def embed_file(file):
     return retriever
 
 st.title("DocumentGPT")
-#사용자에게 파일 업로드 요청
 
 st.markdown("""
 Welcome!
@@ -48,7 +42,7 @@ Welcome!
 Use this chatbot to ask question to an AI about your files!
 """
 )
-
+#사용자에게 파일 업로드 요청
 file = st.file_uploader("Upload a .txt .pdf or .docx file", type=["txt","pdf","docx",]
 )
 
