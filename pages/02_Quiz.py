@@ -274,11 +274,18 @@ if not docs:
     """
     )
 else:
-
-    start = st.button("Generate Quiz")
-
-    if start:
-    #    questions_response = questions_chain.invoke(docs)
-    #    formatting_response = formatting_chain.invoke({"context" : questions_response.content}) --> 이 내용을 아래 한줄로 간단히 표현 
-        reponse = run_quiz_chain(docs, topic if topic else file.name) #topic 이 존재하는 경우는 topic을. 파일을 선택한 경우는 파일명을 넘겨주자    
-        st.write(reponse)
+    response = run_quiz_chain(docs, topic if topic else file.name)
+    with st.form("questions_form"):
+        for question in response["questions"]:
+            st.write(question["question"])
+            value = st.radio(
+                "Select an option.",
+                [answer["answer"] for answer in question["answers"]],
+                index=None,  #처음 라디오버튼에 아무것도 선택하지 않겠다는 뜻
+            )
+            # st.json(question["answers"]) # 파이썬에게 두 값이 서로 같은지 묻기
+            if {"answer":value, "correct": True} in question["answers"]:
+                st.success("Correct!")
+            elif value is not None: #최초에 답이 없을 때 오답으로 나오는 것을 피함
+                st.error("Wrong")                
+        button = st.form_submit_button()
